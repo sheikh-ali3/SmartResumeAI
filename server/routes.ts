@@ -1,22 +1,129 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import bcrypt from "bcryptjs";
+import multer from "multer";
+import fs from "fs";
+import path from "path";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated } from "./replitAuth";
+import { setupAuth } from "./replitAuth";
+import { authenticateUser, generateToken, type AuthRequest } from "./middleware/unifiedAuth";
 import { openaiService } from "./services/openai";
 import { pdfGenerator } from "./services/pdfGenerator";
-import { insertResumeSchema, insertJobDescriptionSchema, insertResumeSectionSchema } from "@shared/schema";
+import { fileParserService } from "./services/fileParser";
+import { nlpService } from "./services/nlp";
+import { 
+  insertResumeSchema, 
+  insertJobDescriptionSchema, 
+  insertResumeSectionSchema,
+  insertAnalysisResultSchema,
+  insertResumeUploadSchema,
+  jwtLoginSchema,
+  jwtSignupSchema,
+} from "@shared/schema";
 import { z } from "zod";
+import { nanoid } from "nanoid";
+
+// Configure multer for file uploads
+const upload = multer({
+  dest: 'uploads/',
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only PDF, DOCX, and TXT files are allowed.'));
+    }
+  },
+});
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Ensure uploads directory exists
+  if (!fs.existsSync('uploads')) {
+    fs.mkdirSync('uploads');
+  }
+
   // Auth middleware
   await setupAuth(app);
 
-  // Auth routes
-  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+  // JWT Auth routes
+  app.post("/api/auth/jwt/signup", async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
-      res.json(user);
+      const { email, password, firstName, lastName, role } = jwtSignupSchema.parse(req.body);
+      
+      const existingUser = await storage.getUserByEmail(email);
+      if (existingUser) {
+        return res.status(400).json({ message: "User already exists" });
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+      const userId = nanoid();
+      
+      const user = await storage.createJwtUser({
+        id: userId,
+        email,
+        password: hashedPassword,
+        firstName,
+        lastName,
+        role,
+      });
+
+      const token = generateToken(userId);
+      res.json({
+        user: { 
+          id: user.id, 
+          email: user.email, 
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role 
+        },
+        token
+      });
+    } catch (error) {
+      console.error("JWT signup error:", error);
+      res.status(400).json({ message: "Invalid input data" });
+    }
+  });
+
+  app.post("/api/auth/jwt/login", async (req, res) => {
+    try {
+      const { email, password } = jwtLoginSchema.parse(req.body);
+      
+      const user = await storage.getUserByEmail(email);
+      if (!user || user.authType !== 'jwt' || !user.password) {
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+
+      const isValidPassword = await bcrypt.compare(password, user.password);
+      if (!isValidPassword) {
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+
+      const token = generateToken(user.id);
+      res.json({
+        user: { 
+          id: user.id, 
+          email: user.email, 
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role 
+        },
+        token
+      });
+    } catch (error) {
+      console.error("JWT login error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Unified auth routes
+  app.get('/api/auth/user', authenticateUser, async (req: AuthRequest, res) => {
+    try {
+      res.json({
+        user: req.user
+      });
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
@@ -24,9 +131,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Resume routes
-  app.get("/api/resumes", isAuthenticated, async (req: any, res) => {
+  app.get("/api/resumes", authenticateUser, async (req: AuthRequest, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.id;
       const resumes = await storage.getUserResumes(userId);
       res.json(resumes);
     } catch (error) {
@@ -35,7 +142,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/resumes/:id", isAuthenticated, async (req: any, res) => {
+  app.get("/api/resumes/:id", authenticateUser, async (req: AuthRequest, res) => {
     try {
       const id = parseInt(req.params.id);
       const resume = await storage.getResumeWithSections(id);
@@ -45,7 +152,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check if user owns the resume
-      if (resume.userId !== req.user.claims.sub) {
+      if (resume.userId !== req.user!.id) {
         return res.status(403).json({ message: "Access denied" });
       }
 
@@ -56,9 +163,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/resumes", isAuthenticated, async (req: any, res) => {
+  app.post("/api/resumes", authenticateUser, async (req: AuthRequest, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.id;
       const resumeData = insertResumeSchema.parse({
         ...req.body,
         userId,
@@ -72,10 +179,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/resumes/:id", isAuthenticated, async (req: any, res) => {
+  app.patch("/api/resumes/:id", authenticateUser, async (req: AuthRequest, res) => {
     try {
       const id = parseInt(req.params.id);
-      const userId = req.user.claims.sub;
+      const userId = req.user!.id;
 
       // Check if resume exists and user owns it
       const existingResume = await storage.getResume(id);
@@ -91,10 +198,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/resumes/:id", isAuthenticated, async (req: any, res) => {
+  app.delete("/api/resumes/:id", authenticateUser, async (req: AuthRequest, res) => {
     try {
       const id = parseInt(req.params.id);
-      const userId = req.user.claims.sub;
+      const userId = req.user!.id;
 
       // Check if resume exists and user owns it
       const existingResume = await storage.getResume(id);
@@ -138,7 +245,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // AI suggestion routes
-  app.post("/api/ai/suggest", isAuthenticated, async (req: any, res) => {
+  app.post("/api/ai/suggest", authenticateUser, async (req: AuthRequest, res) => {
     try {
       const { text, type, context } = req.body;
 
@@ -154,7 +261,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/ai/analyze-job", isAuthenticated, async (req: any, res) => {
+  app.post("/api/ai/analyze-job", authenticateUser, async (req: AuthRequest, res) => {
     try {
       const { jobDescription } = req.body;
 
@@ -170,7 +277,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/ai/match-resume", isAuthenticated, async (req: any, res) => {
+  app.post("/api/ai/match-resume", authenticateUser, async (req: AuthRequest, res) => {
     try {
       const { resumeContent, jobDescription } = req.body;
 
@@ -187,10 +294,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // PDF export route
-  app.post("/api/resumes/:id/export/pdf", isAuthenticated, async (req: any, res) => {
+  app.post("/api/resumes/:id/export/pdf", authenticateUser, async (req: AuthRequest, res) => {
     try {
       const id = parseInt(req.params.id);
-      const userId = req.user.claims.sub;
+      const userId = req.user!.id;
 
       const resume = await storage.getResumeWithSections(id);
       if (!resume || resume.userId !== userId) {
@@ -211,9 +318,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Job description routes
-  app.post("/api/job-descriptions", isAuthenticated, async (req: any, res) => {
+  app.post("/api/job-descriptions", authenticateUser, async (req: AuthRequest, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.id;
       const jobDescriptionData = insertJobDescriptionSchema.parse({
         ...req.body,
         userId,
@@ -227,9 +334,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/job-descriptions", isAuthenticated, async (req: any, res) => {
+  app.get("/api/job-descriptions", authenticateUser, async (req: AuthRequest, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.id;
       const jobDescriptions = await storage.getUserJobDescriptions(userId);
       res.json(jobDescriptions);
     } catch (error) {
@@ -239,10 +346,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Resume sections routes
-  app.post("/api/resumes/:resumeId/sections", isAuthenticated, async (req: any, res) => {
+  app.post("/api/resumes/:resumeId/sections", authenticateUser, async (req: AuthRequest, res) => {
     try {
       const resumeId = parseInt(req.params.resumeId);
-      const userId = req.user.claims.sub;
+      const userId = req.user!.id;
 
       // Verify user owns the resume
       const resume = await storage.getResume(resumeId);
@@ -263,10 +370,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/resumes/:resumeId/sections", isAuthenticated, async (req: any, res) => {
+  app.get("/api/resumes/:resumeId/sections", authenticateUser, async (req: AuthRequest, res) => {
     try {
       const resumeId = parseInt(req.params.resumeId);
-      const userId = req.user.claims.sub;
+      const userId = req.user!.id;
 
       // Verify user owns the resume
       const resume = await storage.getResume(resumeId);
@@ -279,6 +386,161 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching resume sections:", error);
       res.status(500).json({ message: "Failed to fetch resume sections" });
+    }
+  });
+
+  // Resume upload and analysis routes (from CompatibilityMatchmaker)
+  app.post("/api/resume/upload", authenticateUser, upload.single('resume'), async (req: AuthRequest, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const parsedResume = await fileParserService.parseResumeFile(req.file.path, req.file.mimetype);
+
+      const resumeUpload = await storage.createResumeUpload({
+        userId: req.user!.id,
+        filename: `${Date.now()}_${req.file.originalname}`,
+        originalFilename: req.file.originalname,
+        filePath: req.file.path,
+        fileSize: req.file.size,
+        mimeType: req.file.mimetype,
+        rawText: parsedResume.rawText,
+        extractedSkills: parsedResume.skills,
+        extractedExperience: parsedResume.experience,
+        extractedEducation: parsedResume.education,
+        extractedCertifications: parsedResume.certifications,
+      });
+
+      // Clean up uploaded file
+      fs.unlinkSync(req.file.path);
+
+      res.json(resumeUpload);
+    } catch (error) {
+      console.error('Resume upload error:', error);
+      res.status(500).json({ message: "Failed to process resume" });
+    }
+  });
+
+  app.get("/api/resume-uploads", authenticateUser, async (req: AuthRequest, res) => {
+    try {
+      const resumeUploads = await storage.getUserResumeUploads(req.user!.id);
+      res.json(resumeUploads);
+    } catch (error) {
+      console.error("Error fetching resume uploads:", error);
+      res.status(500).json({ message: "Failed to fetch resume uploads" });
+    }
+  });
+
+  app.delete("/api/resume-uploads/:id", authenticateUser, async (req: AuthRequest, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const upload = await storage.getResumeUpload(id);
+      
+      if (!upload || upload.userId !== req.user!.id) {
+        return res.status(404).json({ message: "Resume upload not found" });
+      }
+
+      // Delete file from filesystem if it exists
+      if (fs.existsSync(upload.filePath)) {
+        fs.unlinkSync(upload.filePath);
+      }
+
+      await storage.deleteResumeUpload(id);
+      res.json({ message: "Resume upload deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting resume upload:", error);
+      res.status(500).json({ message: "Failed to delete resume upload" });
+    }
+  });
+
+  // Analysis routes
+  app.post("/api/analysis/create", authenticateUser, async (req: AuthRequest, res) => {
+    try {
+      const { resumeText, jobDescription, resumeId, jobDescriptionId } = req.body;
+
+      if (!resumeText || !jobDescription) {
+        return res.status(400).json({ message: "Resume text and job description are required" });
+      }
+
+      // Perform NLP analysis
+      const compatibilityAnalysis = nlpService.calculateCompatibility(resumeText, jobDescription);
+
+      // Store analysis result
+      const analysisResult = await storage.createAnalysisResult({
+        userId: req.user!.id,
+        resumeId: resumeId || null,
+        jobDescriptionId: jobDescriptionId || null,
+        overallScore: compatibilityAnalysis.overallScore,
+        skillsScore: compatibilityAnalysis.skillsScore,
+        experienceScore: compatibilityAnalysis.experienceScore,
+        educationScore: compatibilityAnalysis.educationScore,
+        missingSkills: compatibilityAnalysis.missingSkills,
+        recommendations: compatibilityAnalysis.recommendations,
+        detailedAnalysis: compatibilityAnalysis.detailedAnalysis,
+      });
+
+      res.json({
+        ...analysisResult,
+        analysis: compatibilityAnalysis,
+      });
+    } catch (error) {
+      console.error("Error creating analysis:", error);
+      res.status(500).json({ message: "Failed to create analysis" });
+    }
+  });
+
+  app.get("/api/analyses", authenticateUser, async (req: AuthRequest, res) => {
+    try {
+      const analyses = await storage.getUserAnalyses(req.user!.id);
+      res.json(analyses);
+    } catch (error) {
+      console.error("Error fetching analyses:", error);
+      res.status(500).json({ message: "Failed to fetch analyses" });
+    }
+  });
+
+  app.get("/api/analysis/:id", authenticateUser, async (req: AuthRequest, res) => {
+    try {
+      const analysisId = parseInt(req.params.id);
+      const analysis = await storage.getAnalysisResult(analysisId);
+      
+      if (!analysis || analysis.userId !== req.user!.id) {
+        return res.status(404).json({ message: "Analysis not found" });
+      }
+
+      res.json(analysis);
+    } catch (error) {
+      console.error("Error fetching analysis:", error);
+      res.status(500).json({ message: "Failed to fetch analysis" });
+    }
+  });
+
+  app.delete("/api/analysis/:id", authenticateUser, async (req: AuthRequest, res) => {
+    try {
+      const analysisId = parseInt(req.params.id);
+      const analysis = await storage.getAnalysisResult(analysisId);
+      
+      if (!analysis || analysis.userId !== req.user!.id) {
+        return res.status(404).json({ message: "Analysis not found" });
+      }
+
+      await storage.deleteAnalysisResult(analysisId);
+      res.json({ message: "Analysis deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting analysis:", error);
+      res.status(500).json({ message: "Failed to delete analysis" });
+    }
+  });
+
+  // Statistics route
+  app.get("/api/stats", authenticateUser, async (req: AuthRequest, res) => {
+    try {
+      const stats = await storage.getUserStats(req.user!.id);
+      res.json(stats);
+    } catch (error) {
+      console.error("Error fetching statistics:", error);
+      res.status(500).json({ message: "Failed to fetch statistics" });
     }
   });
 

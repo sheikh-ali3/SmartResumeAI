@@ -5,6 +5,8 @@ import {
   jobDescriptions,
   resumeSections,
   aiSuggestions,
+  analysisResults,
+  resumeUploads,
   type User,
   type UpsertUser,
   type Resume,
@@ -17,6 +19,10 @@ import {
   type InsertResumeSection,
   type AiSuggestion,
   type InsertAiSuggestion,
+  type AnalysisResult,
+  type InsertAnalysisResult,
+  type ResumeUpload,
+  type InsertResumeUpload,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and } from "drizzle-orm";
@@ -56,6 +62,30 @@ export interface IStorage {
   createAiSuggestion(suggestion: InsertAiSuggestion): Promise<AiSuggestion>;
   getResumeSuggestions(resumeId: number): Promise<AiSuggestion[]>;
   updateAiSuggestion(id: number, suggestion: Partial<InsertAiSuggestion>): Promise<AiSuggestion>;
+
+  // Analysis operations
+  createAnalysisResult(analysis: InsertAnalysisResult): Promise<AnalysisResult>;
+  getUserAnalyses(userId: string): Promise<AnalysisResult[]>;
+  getAnalysisResult(id: number): Promise<AnalysisResult | undefined>;
+  deleteAnalysisResult(id: number): Promise<void>;
+
+  // Resume upload operations
+  createResumeUpload(upload: InsertResumeUpload): Promise<ResumeUpload>;
+  getUserResumeUploads(userId: string): Promise<ResumeUpload[]>;
+  getResumeUpload(id: number): Promise<ResumeUpload | undefined>;
+  deleteResumeUpload(id: number): Promise<void>;
+
+  // JWT user operations
+  getUserByEmail(email: string): Promise<User | undefined>;
+  createJwtUser(userData: { id: string; email: string; password: string; firstName: string; lastName: string; role: string }): Promise<User>;
+
+  // Statistics
+  getUserStats(userId: string): Promise<{
+    totalResumes: number;
+    totalAnalyses: number;
+    averageScore: number;
+    recentAnalyses: AnalysisResult[];
+  }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -232,6 +262,108 @@ export class DatabaseStorage implements IStorage {
       .where(eq(aiSuggestions.id, id))
       .returning();
     return updatedSuggestion;
+  }
+
+  // Analysis operations
+  async createAnalysisResult(analysis: InsertAnalysisResult): Promise<AnalysisResult> {
+    const [newAnalysis] = await db
+      .insert(analysisResults)
+      .values(analysis)
+      .returning();
+    return newAnalysis;
+  }
+
+  async getUserAnalyses(userId: string): Promise<AnalysisResult[]> {
+    return await db
+      .select()
+      .from(analysisResults)
+      .where(eq(analysisResults.userId, userId))
+      .orderBy(desc(analysisResults.createdAt));
+  }
+
+  async getAnalysisResult(id: number): Promise<AnalysisResult | undefined> {
+    const [analysis] = await db
+      .select()
+      .from(analysisResults)
+      .where(eq(analysisResults.id, id));
+    return analysis;
+  }
+
+  async deleteAnalysisResult(id: number): Promise<void> {
+    await db.delete(analysisResults).where(eq(analysisResults.id, id));
+  }
+
+  // Resume upload operations
+  async createResumeUpload(upload: InsertResumeUpload): Promise<ResumeUpload> {
+    const [newUpload] = await db
+      .insert(resumeUploads)
+      .values(upload)
+      .returning();
+    return newUpload;
+  }
+
+  async getUserResumeUploads(userId: string): Promise<ResumeUpload[]> {
+    return await db
+      .select()
+      .from(resumeUploads)
+      .where(eq(resumeUploads.userId, userId))
+      .orderBy(desc(resumeUploads.createdAt));
+  }
+
+  async getResumeUpload(id: number): Promise<ResumeUpload | undefined> {
+    const [upload] = await db
+      .select()
+      .from(resumeUploads)
+      .where(eq(resumeUploads.id, id));
+    return upload;
+  }
+
+  async deleteResumeUpload(id: number): Promise<void> {
+    await db.delete(resumeUploads).where(eq(resumeUploads.id, id));
+  }
+
+  // JWT user operations
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, email));
+    return user;
+  }
+
+  async createJwtUser(userData: { id: string; email: string; password: string; firstName: string; lastName: string; role: string }): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values({
+        ...userData,
+        authType: 'jwt',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return user;
+  }
+
+  // Statistics
+  async getUserStats(userId: string): Promise<{
+    totalResumes: number;
+    totalAnalyses: number;
+    averageScore: number;
+    recentAnalyses: AnalysisResult[];
+  }> {
+    const userResumes = await this.getUserResumes(userId);
+    const userAnalyses = await this.getUserAnalyses(userId);
+    
+    const averageScore = userAnalyses.length > 0 
+      ? Math.round(userAnalyses.reduce((sum, analysis) => sum + analysis.overallScore, 0) / userAnalyses.length)
+      : 0;
+
+    return {
+      totalResumes: userResumes.length,
+      totalAnalyses: userAnalyses.length,
+      averageScore,
+      recentAnalyses: userAnalyses.slice(0, 5),
+    };
   }
 }
 

@@ -33,6 +33,10 @@ export const users = pgTable("users", {
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
+  // Additional auth fields for JWT support
+  password: varchar("password"), // For JWT auth users
+  role: varchar("role", { length: 50 }).default("jobseeker"), // jobseeker, employer, admin
+  authType: varchar("auth_type", { length: 20 }).default("replit"), // replit, jwt
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -105,10 +109,45 @@ export const aiSuggestions = pgTable("ai_suggestions", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Analysis results for resume-job compatibility
+export const analysisResults = pgTable("analysis_results", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  resumeId: integer("resume_id").notNull().references(() => resumes.id, { onDelete: "cascade" }),
+  jobDescriptionId: integer("job_description_id").notNull().references(() => jobDescriptions.id, { onDelete: "cascade" }),
+  overallScore: integer("overall_score").notNull(),
+  skillsScore: integer("skills_score").notNull(),
+  experienceScore: integer("experience_score").notNull(),
+  educationScore: integer("education_score").notNull(),
+  missingSkills: jsonb("missing_skills").$type<string[]>(),
+  recommendations: jsonb("recommendations").$type<string[]>(),
+  detailedAnalysis: jsonb("detailed_analysis"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Resume uploads for compatibility analysis (raw file data)
+export const resumeUploads = pgTable("resume_uploads", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  filename: varchar("filename", { length: 255 }).notNull(),
+  originalFilename: varchar("original_filename", { length: 255 }).notNull(),
+  filePath: varchar("file_path", { length: 500 }).notNull(),
+  fileSize: integer("file_size"),
+  mimeType: varchar("mime_type", { length: 100 }),
+  rawText: text("raw_text"),
+  extractedSkills: jsonb("extracted_skills").$type<string[]>(),
+  extractedExperience: jsonb("extracted_experience").$type<string[]>(),
+  extractedEducation: jsonb("extracted_education").$type<string[]>(),
+  extractedCertifications: jsonb("extracted_certifications").$type<string[]>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   resumes: many(resumes),
   jobDescriptions: many(jobDescriptions),
+  analysisResults: many(analysisResults),
+  resumeUploads: many(resumeUploads),
 }));
 
 export const resumesRelations = relations(resumes, ({ one, many }) => ({
@@ -159,6 +198,28 @@ export const aiSuggestionsRelations = relations(aiSuggestions, ({ one }) => ({
   }),
 }));
 
+export const analysisResultsRelations = relations(analysisResults, ({ one }) => ({
+  user: one(users, {
+    fields: [analysisResults.userId],
+    references: [users.id],
+  }),
+  resume: one(resumes, {
+    fields: [analysisResults.resumeId],
+    references: [resumes.id],
+  }),
+  jobDescription: one(jobDescriptions, {
+    fields: [analysisResults.jobDescriptionId],
+    references: [jobDescriptions.id],
+  }),
+}));
+
+export const resumeUploadsRelations = relations(resumeUploads, ({ one }) => ({
+  user: one(users, {
+    fields: [resumeUploads.userId],
+    references: [users.id],
+  }),
+}));
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   createdAt: true,
@@ -193,6 +254,30 @@ export const insertAiSuggestionSchema = createInsertSchema(aiSuggestions).omit({
   createdAt: true,
 });
 
+export const insertAnalysisResultSchema = createInsertSchema(analysisResults).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertResumeUploadSchema = createInsertSchema(resumeUploads).omit({
+  id: true,
+  createdAt: true,
+});
+
+// JWT Auth schemas
+export const jwtLoginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6),
+});
+
+export const jwtSignupSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6),
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  role: z.enum(["jobseeker", "employer", "admin"]).default("jobseeker"),
+});
+
 // Types
 export type UpsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -206,6 +291,12 @@ export type InsertResumeSection = z.infer<typeof insertResumeSectionSchema>;
 export type ResumeSection = typeof resumeSections.$inferSelect;
 export type InsertAiSuggestion = z.infer<typeof insertAiSuggestionSchema>;
 export type AiSuggestion = typeof aiSuggestions.$inferSelect;
+export type InsertAnalysisResult = z.infer<typeof insertAnalysisResultSchema>;
+export type AnalysisResult = typeof analysisResults.$inferSelect;
+export type InsertResumeUpload = z.infer<typeof insertResumeUploadSchema>;
+export type ResumeUpload = typeof resumeUploads.$inferSelect;
+export type JwtLogin = z.infer<typeof jwtLoginSchema>;
+export type JwtSignup = z.infer<typeof jwtSignupSchema>;
 
 // Resume content type definitions
 export type PersonalInfo = {
