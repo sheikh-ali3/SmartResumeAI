@@ -9,7 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Brain, Menu, X, User, LogOut, FileText, LayoutTemplate } from "lucide-react";
+import { Brain, Menu, X, User, LogOut, FileText, LayoutTemplate, TrendingUp } from "lucide-react";
 import { Link } from "wouter";
 import MobileMenu from "./mobile-menu";
 
@@ -44,14 +44,17 @@ export default function Navbar() {
 
             {/* Desktop Navigation */}
             <div className="hidden md:flex items-center space-x-6">
-              <Link href="/templates">
-                <a className="text-gray-600 hover:text-primary transition-colors">Templates</a>
+              <Link href="/templates" className="text-gray-600 hover:text-primary transition-colors">
+                Templates
               </Link>
               
               {isAuthenticated ? (
                 <>
-                  <Link href="/dashboard">
-                    <a className="text-gray-600 hover:text-primary transition-colors">Dashboard</a>
+                  <Link href="/dashboard" className="text-gray-600 hover:text-primary transition-colors">
+                    Dashboard
+                  </Link>
+                  <Link href="/analysis" className="text-gray-600 hover:text-primary transition-colors">
+                    Compatibility Analysis
                   </Link>
                   
                   {/* User Menu */}
@@ -83,6 +86,12 @@ export default function Navbar() {
                         <DropdownMenuItem className="cursor-pointer">
                           <FileText className="mr-2 h-4 w-4" />
                           <span>My Resumes</span>
+                        </DropdownMenuItem>
+                      </Link>
+                      <Link href="/analysis">
+                        <DropdownMenuItem className="cursor-pointer">
+                          <TrendingUp className="mr-2 h-4 w-4" />
+                          <span>Compatibility Analysis</span>
                         </DropdownMenuItem>
                       </Link>
                       <Link href="/templates">

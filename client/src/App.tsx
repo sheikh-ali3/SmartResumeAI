@@ -9,6 +9,7 @@ import Landing from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
 import ResumeBuilder from "@/pages/resume-builder";
 import Templates from "@/pages/templates";
+import CompatibilityAnalysis from "@/pages/compatibility-analysis";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -26,6 +27,7 @@ function Router() {
           <Route path="/dashboard" component={Dashboard} />
           <Route path="/builder/:id?" component={ResumeBuilder} />
           <Route path="/templates" component={Templates} />
+          <Route path="/analysis" component={CompatibilityAnalysis} />
         </>
       )}
       <Route component={NotFound} />

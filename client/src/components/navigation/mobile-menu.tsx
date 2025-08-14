@@ -10,7 +10,8 @@ import {
   LayoutTemplate,
   X,
   Home,
-  LayoutGrid
+  LayoutGrid,
+  TrendingUp
 } from "lucide-react";
 import { Link } from "wouter";
 import type { User as UserType } from "@shared/schema";
@@ -133,6 +134,16 @@ export default function MobileMenu({
                     >
                       <FileText className="mr-3 h-4 w-4" />
                       Resume Builder
+                    </Button>
+                  </Link>
+                  <Link href="/analysis">
+                    <Button 
+                      variant="ghost" 
+                      className="w-full justify-start" 
+                      onClick={handleLinkClick}
+                    >
+                      <TrendingUp className="mr-3 h-4 w-4" />
+                      Compatibility Analysis
                     </Button>
                   </Link>
                   <Link href="/templates">
