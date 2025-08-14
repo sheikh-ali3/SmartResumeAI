@@ -1,0 +1,222 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: hsl(0, 0%, 100%);
+  --foreground: hsl(240, 10%, 3.9%);
+  --muted: hsl(240, 4.8%, 95.9%);
+  --muted-foreground: hsl(240, 5%, 64.9%);
+  --popover: hsl(0, 0%, 100%);
+  --popover-foreground: hsl(240, 10%, 3.9%);
+  --card: hsl(0, 0%, 100%);
+  --card-foreground: hsl(240, 10%, 3.9%);
+  --border: hsl(240, 5.9%, 90%);
+  --input: hsl(240, 5.9%, 90%);
+  --primary: hsl(207, 90%, 54%);
+  --primary-foreground: hsl(210, 40%, 98%);
+  --secondary: hsl(220, 14.3%, 15.9%);
+  --secondary-foreground: hsl(210, 40%, 98%);
+  --accent: hsl(142, 71%, 45%);
+  --accent-foreground: hsl(210, 40%, 98%);
+  --destructive: hsl(0, 84.2%, 60.2%);
+  --destructive-foreground: hsl(210, 40%, 98%);
+  --ring: hsl(240, 10%, 3.9%);
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: hsl(240, 10%, 3.9%);
+  --foreground: hsl(0, 0%, 98%);
+  --muted: hsl(240, 3.7%, 15.9%);
+  --muted-foreground: hsl(240, 5%, 64.9%);
+  --popover: hsl(240, 10%, 3.9%);
+  --popover-foreground: hsl(0, 0%, 98%);
+  --card: hsl(240, 10%, 3.9%);
+  --card-foreground: hsl(0, 0%, 98%);
+  --border: hsl(240, 3.7%, 15.9%);
+  --input: hsl(240, 3.7%, 15.9%);
+  --primary: hsl(207, 90%, 54%);
+  --primary-foreground: hsl(210, 40%, 98%);
+  --secondary: hsl(240, 3.7%, 15.9%);
+  --secondary-foreground: hsl(0, 0%, 98%);
+  --accent: hsl(142, 71%, 45%);
+  --accent-foreground: hsl(210, 40%, 98%);
+  --destructive: hsl(0, 62.8%, 30.6%);
+  --destructive-foreground: hsl(0, 0%, 98%);
+  --ring: hsl(240, 4.9%, 83.9%);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+  }
+}
+
+/* Rich text editor styles */
+.rich-text-editor {
+  @apply min-h-32 p-3 border rounded-lg focus-within:ring-2 focus-within:ring-ring focus-within:border-ring;
+}
+
+.rich-text-editor .editor-toolbar {
+  @apply flex items-center space-x-1 p-2 border-b border-border mb-2;
+}
+
+.rich-text-editor .editor-toolbar button {
+  @apply px-2 py-1 rounded text-sm hover:bg-muted transition-colors;
+}
+
+.rich-text-editor .editor-toolbar button.active {
+  @apply bg-primary text-primary-foreground;
+}
+
+.rich-text-editor .editor-content {
+  @apply min-h-24 focus:outline-none;
+}
+
+.rich-text-editor .editor-content p {
+  @apply mb-2;
+}
+
+.rich-text-editor .editor-content strong {
+  @apply font-semibold;
+}
+
+.rich-text-editor .editor-content em {
+  @apply italic;
+}
+
+.rich-text-editor .editor-content ul {
+  @apply list-disc ml-4 space-y-1;
+}
+
+.rich-text-editor .editor-content ol {
+  @apply list-decimal ml-4 space-y-1;
+}
+
+/* Resume preview styles */
+.resume-preview {
+  @apply bg-white shadow-sm border rounded-lg p-8 max-h-[800px] overflow-y-auto;
+}
+
+.resume-preview .resume-header {
+  @apply text-center border-b-2 border-primary pb-4 mb-6;
+}
+
+.resume-preview .resume-name {
+  @apply text-2xl font-bold text-secondary mb-2;
+}
+
+.resume-preview .resume-contact {
+  @apply text-sm text-muted-foreground;
+}
+
+.resume-preview .resume-section {
+  @apply mb-6;
+}
+
+.resume-preview .resume-section-title {
+  @apply text-lg font-semibold text-secondary border-b border-border pb-1 mb-3;
+}
+
+.resume-preview .resume-item {
+  @apply mb-4;
+}
+
+.resume-preview .resume-item-header {
+  @apply flex justify-between items-start mb-1;
+}
+
+.resume-preview .resume-item-title {
+  @apply font-semibold text-secondary;
+}
+
+.resume-preview .resume-item-company {
+  @apply text-primary font-medium;
+}
+
+.resume-preview .resume-item-date {
+  @apply text-sm text-muted-foreground;
+}
+
+.resume-preview .resume-item-description {
+  @apply text-muted-foreground mt-1;
+}
+
+.resume-preview .skills-grid {
+  @apply grid grid-cols-2 sm:grid-cols-3 gap-2;
+}
+
+.resume-preview .skill-item {
+  @apply bg-muted px-3 py-1 rounded-full text-sm text-center;
+}
+
+/* Template selector styles */
+.template-grid {
+  @apply grid grid-cols-1 sm:grid-cols-2 gap-4;
+}
+
+.template-card {
+  @apply border rounded-lg p-4 cursor-pointer hover:shadow-md transition-shadow;
+}
+
+.template-card.selected {
+  @apply border-primary ring-2 ring-primary ring-opacity-50;
+}
+
+.template-preview {
+  @apply w-full h-32 bg-gray-100 rounded border mb-3 flex items-center justify-center text-xs text-muted-foreground;
+}
+
+/* Mobile menu styles */
+.mobile-menu {
+  @apply fixed inset-0 z-50 bg-background;
+}
+
+.mobile-menu-overlay {
+  @apply fixed inset-0 bg-black bg-opacity-50;
+}
+
+.mobile-menu-content {
+  @apply relative bg-background h-full overflow-y-auto;
+}
+
+/* Animation utilities */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideIn {
+  from { transform: translateY(-10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease-out;
+}
+
+/* Custom scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  @apply bg-muted;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-muted-foreground rounded-full;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  @apply bg-foreground;
+}
